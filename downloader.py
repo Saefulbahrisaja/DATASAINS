@@ -26,12 +26,16 @@ def get_comments_from_url(video_url: str, sort_by='top', count=100):
 
     comments = []
     for comment in generator:
-        comments.append({
-            'username': comment['author'],
-            'comment': comment['text'],
-            'time': comment['time'],
-            'likes': comment['votes']
-        })
-        if len(comments) >= count:
-            break
+        try:
+            comments.append({
+                'username': comment.get('author', ''),
+                'comment': comment.get('text', ''),
+                'time': comment.get('time', ''),
+                'likes': int(comment.get('votes', 0))  # pastikan jadi int
+            })
+            if len(comments) >= count:
+                break
+        except (ValueError, TypeError):
+            # Lewati jika 'votes' tidak bisa dikonversi ke int
+            continue
     return comments
