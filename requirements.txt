@@ -9,3 +9,4 @@ seaborn
 scikit-learn
 wordcloud
 Sastrawi
+downloader

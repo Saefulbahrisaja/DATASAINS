@@ -14,6 +14,7 @@ from wordcloud import WordCloud
 from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
 from sklearn.feature_extraction.text import TfidfTransformer
 
+
 nltk.download('punkt')
 nltk.download('stopwords')
 
