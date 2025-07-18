@@ -11,3 +11,4 @@ wordcloud
 Sastrawi
 downloader
 dateparser
+youtube-comment-downloader
