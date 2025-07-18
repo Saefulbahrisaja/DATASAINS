@@ -12,3 +12,4 @@ Sastrawi
 downloader
 dateparser
 youtube-comment-downloader
+yt-dlp
