@@ -6,3 +6,4 @@ torch
 playwright
 nltk
 seaborn
+scikit-learn
