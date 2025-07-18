@@ -7,3 +7,4 @@ playwright
 nltk
 seaborn
 scikit-learn
+wordcloud
