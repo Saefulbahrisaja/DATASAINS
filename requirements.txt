@@ -8,3 +8,4 @@ nltk
 seaborn
 scikit-learn
 wordcloud
+Sastrawi
