@@ -1,0 +1,4 @@
+senang: bahagia, senang, gembira, bagus, bangga,hebat
+sedih: sedih, kecewa, menangis
+marah: marah, kesal, jengkel, parah
+takut: takut, cemas, khawatir,merinding,kejam
