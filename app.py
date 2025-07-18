@@ -1,19 +1,15 @@
 import streamlit as st
 import pandas as pd
-import os
 import re
 import nltk
-import subprocess
 import matplotlib.pyplot as plt
 import seaborn as sns
-
 from nltk.corpus import stopwords
-from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
 from sklearn.decomposition import LatentDirichletAllocation
 from wordcloud import WordCloud
 from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
-from sklearn.feature_extraction.text import TfidfTransformer
-
+from downloader import get_comments_from_url
 
 nltk.download('punkt')
 nltk.download('stopwords')
@@ -26,40 +22,21 @@ def load_stopwords(file_path):
             additional_stopwords = {line.strip() for line in f.readlines()}
         stopwords_list.update(additional_stopwords)
     except Exception as e:
-        st.warning(f"Terjadi kesalahan saat memuat stopword list dari file: {e}")
+        st.warning(f"Gagal memuat stopword dari file: {e}")
     return stopwords_list
 
 stop_words = load_stopwords("stopwords.txt")
-factory = StemmerFactory()
-stemmer = factory.create_stemmer()
+stemmer = StemmerFactory().create_stemmer()
 
-# ==== Scraper YouTube ====
+# ==== Scrape YouTube ====
 def scrape_youtube_comments(url, limit=300):
-    output_file = "comments.csv"
-    if os.path.exists(output_file):
-        os.remove(output_file)
-    cmd = [
-        "youtube-comment-downloader",
-        "--url", url,
-        "--output", output_file,
-        "--limit", str(limit)
-    ]
-    subprocess.run(cmd)
-    return pd.read_csv(output_file, on_bad_lines='skip', quoting=3, encoding='utf-8')
-
-# ==== Scraper TikTok ====
-def scrape_tiktok_comments(url, limit=300):
-    output_file = "comments_tiktok.csv"
-    if os.path.exists(output_file):
-        os.remove(output_file)
-    cmd = [
-        "tiktok-comment-scraper",
-        "--url", url,
-        "--number", str(limit),
-        "--output", output_file
-    ]
-    subprocess.run(cmd)
-    return pd.read_csv(output_file, on_bad_lines='skip', quoting=3, encoding='utf-8')
+    try:
+        comments = get_comments_from_url(url, sort_by="top", count=limit)
+        df = pd.DataFrame(comments)
+        return df
+    except Exception as e:
+        st.error(f"Gagal mengambil komentar: {e}")
+        return pd.DataFrame()
 
 # ==== Preprocessing ====
 def get_root_words(text):
@@ -72,7 +49,7 @@ def get_root_words(text):
 def clean_text(text):
     return " ".join(get_root_words(text))
 
-# ==== Sentiment Analysis ====
+# ==== Sentiment ====
 def load_lexicon(file_path):
     try:
         with open(file_path, "r", encoding="utf-8") as f:
@@ -92,10 +69,9 @@ def get_sentiment(text):
         return "Positif"
     elif neg > pos:
         return "Negatif"
-    else:
-        return "Netral"
-        
-# ==== Load Emotion Lexicon ====
+    return "Netral"
+
+# ==== Emosi ====
 def load_emotion_lexicon(file_path):
     emotions = {}
     try:
@@ -117,28 +93,21 @@ def get_emotion(text):
         for emotion, wordlist in emotion_lexicon.items():
             if word in wordlist:
                 scores[emotion] += 1
-    if not any(scores.values()):
-        return 
-    return max(scores, key=scores.get)
-
+    return max(scores, key=scores.get) if any(scores.values()) else "Netral"
 
 # ==== UI ====
-st.title("Analisis Komentar YouTube & TikTok: Sentimen dan Topik (Bahasa Indonesia)")
+st.title("📊 Analisis Komentar YouTube (Sentimen, Emosi, Topik)")
 
-platform = st.selectbox("Pilih Platform:", ["YouTube", "TikTok"])
-url = st.text_input(f"Masukkan URL video {platform}:", "")
+url = st.text_input("Masukkan URL video YouTube:")
 limit = st.slider("Jumlah komentar:", 50, 5000, 300, 100)
 
 if st.button("Analisis Sekarang") and url:
     with st.spinner("Mengambil komentar..."):
-        try:
-            df = scrape_youtube_comments(url, limit) if platform == "YouTube" else scrape_tiktok_comments(url, limit)
-            if df.empty:
-                st.warning("Tidak ada komentar ditemukan.")
-                st.stop()
-        except Exception as e:
-            st.error(f"Gagal mengambil komentar: {e}")
-            st.stop()
+        df = scrape_youtube_comments(url, limit)
+
+    if df.empty:
+        st.warning("Tidak ada komentar ditemukan.")
+        st.stop()
 
     comment_col = next((col for col in df.columns if "text" in col.lower() or "comment" in col.lower()), None)
     if not comment_col:
@@ -150,82 +119,54 @@ if st.button("Analisis Sekarang") and url:
     df = df[df["clean_text"].str.strip() != ""]
 
     if df.empty:
-        st.error("Semua komentar kosong setelah dibersihkan.")
+        st.warning("Komentar kosong setelah dibersihkan.")
         st.stop()
 
     df["sentimen"] = df["clean_text"].apply(get_sentiment)
     df["emosi"] = df["clean_text"].apply(get_emotion)
 
-    # ==== Sentiment Chart ====
-    st.subheader("Distribusi Sentimen")
-    counts = df["sentimen"].value_counts()
+    # Sentimen Chart
+    st.subheader("📈 Distribusi Sentimen")
+    sentimen_counts = df["sentimen"].value_counts()
     fig, ax = plt.subplots()
-    sentimen_colors = {
-        "Positif": "#4CAF50",
-        "Negatif": "#F44336",
-        "Netral": "#9E9E9E"
-    }
-    sns.barplot(
-        x=counts.index, 
-        y=counts.values, 
-        ax=ax, 
-        palette=[sentimen_colors.get(s, "#607D8B") for s in counts.index]
-    )
+    sns.barplot(x=sentimen_counts.index, y=sentimen_counts.values, palette="Set2", ax=ax)
     ax.set_ylabel("Jumlah Komentar")
     st.pyplot(fig)
 
-    # ==== Emotion Chart ====
-    st.subheader("Distribusi Emosi")
-    emotion_counts = df["emosi"].value_counts()
-    emotion_colors = {
-        "senang": "#4CAF50",
-        "sedih": "#2196F3",
-        "marah": "#F44336",
-        "takut": "#9C27B0",
-        "Netral": "#9E9E9E"
-    }
+    # Emosi Chart
+    st.subheader("😊 Distribusi Emosi")
+    emosi_counts = df["emosi"].value_counts()
     fig, ax = plt.subplots()
-    sns.barplot(
-        x=emotion_counts.index,
-        y=emotion_counts.values,
-        ax=ax,
-        palette=[emotion_colors.get(e, "#607D8B") for e in emotion_counts.index]
-    )
+    sns.barplot(x=emosi_counts.index, y=emosi_counts.values, palette="Set3", ax=ax)
     ax.set_ylabel("Jumlah Komentar")
     st.pyplot(fig)
 
-    # ==== Topic Modeling ====
-    st.subheader("Topik Komentar (LDA + WordCloud)")
+    # LDA Topik
+    st.subheader("🧠 Topik Komentar (LDA + WordCloud)")
     vectorizer = CountVectorizer(max_df=0.9, min_df=2)
     X = vectorizer.fit_transform(df["clean_text"])
     lda = LatentDirichletAllocation(n_components=5, random_state=42)
     lda.fit(X)
 
     vocab = vectorizer.get_feature_names_out()
-    combined_word_freq = {}
-
-    # Apply TF-IDF weighting
-    tfidf_transformer = TfidfTransformer()
-    X_tfidf = tfidf_transformer.fit_transform(X)
+    tfidf = TfidfTransformer().fit_transform(X)
+    topik_freq = {}
 
     for i, topic in enumerate(lda.components_):
         top_idx = topic.argsort()[:-11:-1]
-        top_words = [(vocab[j], X_tfidf[:, j].mean()) for j in top_idx]
+        top_words = [(vocab[j], tfidf[:, j].mean()) for j in top_idx]
         label = vocab[top_idx[0]]
-        st.markdown(f"#### Topik {i+1}: {label.capitalize()}")
+        st.markdown(f"**Topik {i+1}: {label.capitalize()}**")
         st.write(", ".join(w for w, _ in top_words))
         for w, score in top_words:
-            combined_word_freq[w] = combined_word_freq.get(w, 0) + score
+            topik_freq[w] = topik_freq.get(w, 0) + score
 
-    # ==== Word Cloud ====
-    st.markdown("#### Word Cloud Gabungan")
-    wc = WordCloud(width=800, height=500, background_color="white").generate_from_frequencies(combined_word_freq)
-    fig, ax = plt.subplots(figsize=(10, 6))
+    wc = WordCloud(width=800, height=500, background_color="white").generate_from_frequencies(topik_freq)
+    fig, ax = plt.subplots(figsize=(10, 5))
     ax.imshow(wc, interpolation="bilinear")
     ax.axis("off")
     st.pyplot(fig)
 
-    with st.expander("🔍 Lihat Data Lengkap"):
-        st.dataframe(df[[comment_col, "root_words", "clean_text", "sentimen"]])
-        st.download_button("Unduh Data", df.to_csv(index=False).encode('utf-8'), "data.csv", "text/csv")
-        st.download_button("Unduh Komentar", df[comment_col].to_csv(index=False).encode('utf-8'), "komentar.csv", "text/csv")
+    with st.expander("📥 Lihat & Unduh Data"):
+        st.dataframe(df[[comment_col, "clean_text", "sentimen", "emosi"]])
+        st.download_button("📄 Unduh Data CSV", df.to_csv(index=False).encode("utf-8"), "komentar_analisis.csv", "text/csv")
