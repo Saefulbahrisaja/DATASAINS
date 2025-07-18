@@ -4,3 +4,4 @@ matplotlib
 transformers
 torch
 playwright
+nltk
