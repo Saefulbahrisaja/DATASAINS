@@ -1,41 +1,34 @@
-import requests
-import dateparser
+# downloader.py
+from youtube_comment_downloader import YoutubeCommentDownloader
 import re
-import json
-from typing import Generator
 
-YOUTUBE_COMMENT_URL = 'https://www.youtube.com/all_comments?v='
-YOUTUBE_VIDEO_URL = 'https://www.youtube.com/watch?v='
+def parse_likes(votes_str):
+    try:
+        votes_str = votes_str.strip().lower()
+        if 'rb' in votes_str:
+            return int(float(votes_str.replace('rb', '').replace(',', '.')) * 1000)
+        return int(votes_str)
+    except:
+        return 0
 
-def extract_video_id(url: str) -> str:
-    """Extract the video ID from a YouTube URL."""
-    if 'watch?v=' in url:
-        return url.split('watch?v=')[1].split('&')[0]
-    elif 'youtu.be/' in url:
-        return url.split('youtu.be/')[1].split('?')[0]
-    else:
-        raise ValueError("Invalid YouTube URL format.")
-
-def get_comments_from_url(video_url: str, sort_by='top', count=100):
-    import yt_dlp
-    from youtube_comment_downloader import YoutubeCommentDownloader
-
-    video_id = extract_video_id(video_url)
+def get_comments_from_url(url, sort_by="top", count=300):
     downloader = YoutubeCommentDownloader()
-    generator = downloader.get_comments_from_url(YOUTUBE_VIDEO_URL + video_id, sort_by=sort_by)
+    generator = downloader.get_comments_from_url(url, sort_by=sort_by)
 
     comments = []
     for comment in generator:
         try:
+            like_str = comment.get("votes", "0")
+            likes = parse_likes(like_str)
             comments.append({
-                'username': comment.get('author', ''),
-                'comment': comment.get('text', ''),
-                'time': comment.get('time', ''),
-                'likes': int(comment.get('votes', 0))  # pastikan jadi int
+                "username": comment.get("author", ""),
+                "text": comment.get("text", ""),
+                "time": comment.get("time", ""),
+                "likes": likes
             })
             if len(comments) >= count:
                 break
-        except (ValueError, TypeError):
-            # Lewati jika 'votes' tidak bisa dikonversi ke int
+        except Exception:
             continue
+
     return comments
